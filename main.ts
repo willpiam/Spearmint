@@ -25,25 +25,10 @@ const emulator = new Emulator([alice]);
 const lucid = await Lucid(emulator, "Preview");
 lucid.selectWallet.fromSeed(alice.seedPhrase);
 
-{
-  // tx alice send herself 2 utxos (second utxo is automatic change)
-  const tx = await lucid
-    .newTx()
-    .pay.ToAddress(alice.address, { lovelace: 1_000_000n })
-    .complete();
-
-  const txSigned = await tx.sign.withWallet().complete();
-  await txSigned.submit();
-  emulator.awaitBlock(1);
-}
-
 // pick a utxo from alice
-// const utxo = (await lucid.utxosAt(alice.address))[0];
-const utxos = await lucid.utxosAt(alice.address);
-console.log(`alice utxo count:\t${utxos.length}`);
-const utxo = utxos[0];
+const utxo = (await lucid.utxosAt(alice.address))[0];
 const utxoRefParam = new Constr(0, [
-  new Constr(0, [utxo.txHash]),
+  utxo.txHash,
   BigInt(utxo.outputIndex),
 ]);
 console.log(`utxo tx hash:\t\t${utxo.txHash}`);
@@ -61,7 +46,6 @@ const parameterizedValidator = applyParamsToScript(
 const validator: SpendingValidator = {
   type: "PlutusV3",
   script: parameterizedValidator,
-  // script: applyDoubleCborEncoding(parameterizedValidator),
 };
 
 const mintingPolicy: MintingPolicy = validator as MintingPolicy;
@@ -102,35 +86,30 @@ const MintAction = {
   Burn: Data.to(new Constr(1, [])),
 };
 
-try {
-  const tx = await lucid
-    .newTx()
-    .collectFrom([utxo])
-    .attach.MintingPolicy(mintingPolicy)
-    .mintAssets(
-      {
-        [refUnit]: 1n,
-        [userUnit]: 1_000n,
-      },
-      MintAction.Mint,
-    )
-    .pay.ToContract(lockAddress, {
-      kind: "inline",
-      value: datum,
-    }, {
+const tx = await lucid
+  .newTx()
+  .collectFrom([utxo])
+  .attach.MintingPolicy(mintingPolicy)
+  .mintAssets(
+    {
       [refUnit]: 1n,
-    })
-    .complete();
+      [userUnit]: 1_000n,
+    },
+    MintAction.Mint,
+  )
+  .pay.ToContract(lockAddress, {
+    kind: "inline",
+    value: datum,
+  }, {
+    [refUnit]: 1n,
+  })
+  .complete();
 
-  console.log(tx);
-} catch (e) {
-  const utxos2 = await lucid.utxosAt(alice.address);
-  console.log(`alice utxo count:\t${utxos2.length}`);
-  const utxo2 = utxos2[0];
-  utxo2 === utxo
-    ? console.log("utxo is still there")
-    : console.log("utxo is gone");
-  throw e;
+{
+  const txSigned = await tx.sign.withWallet().complete();
+  const txHash = await txSigned.submit();
+  emulator.awaitBlock(1);
+  console.log(`tx hash:\t\t${txHash}`);
 }
 
 // must mint reference NFT with user tokens

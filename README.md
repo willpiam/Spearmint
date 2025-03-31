@@ -13,9 +13,15 @@ A tool for minting CIP-68 tokens with proper support for burning
 
 Thank you to the following people for helping with this script
 
+### MGpai (Anastasia Labs discord)
+
+Mentioned that the way to encode an output reference off-chain before using it
+to oneshot a validator had changed between plutusV2 and V3.
+
 ## Aiken default readme (to be removed)
 
-Write validators in the `validators` folder, and supporting functions in the `lib` folder using `.ak` as a file extension.
+Write validators in the `validators` folder, and supporting functions in the
+`lib` folder using `.ak` as a file extension.
 
 ```aiken
 validator my_first_validator {
@@ -34,6 +40,7 @@ aiken build
 ## Configuring
 
 **aiken.toml**
+
 ```toml
 [config.default]
 network_id = 41
@@ -67,7 +74,8 @@ aiken check -m foo
 
 ## Documentation
 
-If you're writing a library, you might want to generate an HTML documentation for it.
+If you're writing a library, you might want to generate an HTML documentation
+for it.
 
 Use:
 
