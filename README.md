@@ -2,6 +2,10 @@
 
 A tool for minting CIP-68 tokens with proper support for burning
 
+## Todo
+
+- [ ] put field in datum to control who has authority to update the metadata
+
 ## References
 
 1. [Aiken Docs & standard library](https://aiken-lang.github.io/stdlib/)

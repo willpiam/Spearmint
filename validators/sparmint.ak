@@ -60,7 +60,6 @@ validator sparmint(oneshot: OutputReference) {
         // if prefixes are removed the reference NFT name and user token name are the same
         // reference NFT on own utxo
 
-
         expect Some(Pair(reference_nft_name, reference_nft_amount)) =
           mint_list
             |> list.find(
