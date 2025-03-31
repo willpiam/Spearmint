@@ -137,6 +137,8 @@ validator sparmint(oneshot: OutputReference) {
     focus_input_ref: OutputReference,
     self: Transaction,
   ) {
+    // 1. admin specified in the extra field of the cip68 datum must be the admin
+    expect Some(prev_metadata) = datum
     // find the new reference utxo
     let Transaction { inputs, outputs, .. } = self
 
@@ -156,21 +158,20 @@ validator sparmint(oneshot: OutputReference) {
     let reference_output =
       find_reference_utxo(outputs, policy_id, reference_nft_name)
 
-    // reference utxo must be on same address 
-    expect InlineDatum(_new_reference_datum) = reference_output.datum
-
-    // ---------------------------------------------------------------------------------------------------------------------------- 
-    expect Some(prev_metadata) = datum
-
-    // ----------------------------------------------------------------------------------------------------------------------------
-    // ensure it confroms to CIP88
-    // expect Cip68(_new_metadata, _version, extra) = new_reference_datum
+    // prove that the new reference datum is a Cip68 (and that it has the fields we expect)
+    // ----------------------------------------------------------------------------------------------------
+    expect InlineDatum(new_reference_datum) = reference_output.datum
+    expect _new_metadata: Cip68 = new_reference_datum
+    // ----------------------------------------------------------------------------------------------------
     and {
+      // admin must have signed the transaction
+      list.has(self.extra_signatories, prev_metadata.extra.admin),
       // token must remain on same address
       reference_output.address == focus_input.output.address,
+      // there must be no user tokens present on the input with the ref token (keep??)
       1 == list.length(policy_tokens),
+      // the reference token name must have the expected prefix
       bytearray.take(reference_nft_name, 4) == #"000643b0",
-      list.has(self.extra_signatories, prev_metadata.extra.admin),
     }
   }
 

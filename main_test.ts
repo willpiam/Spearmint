@@ -172,7 +172,7 @@ Deno.test("Metadata Update", async () => {
     image: "https://example.com/updated-image.jpg",
   });
   const version = 1n;
-  const extra: Data[] = [];
+  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
   const cip68_2 = new Constr(0, [metadata2, version, extra]);
   const datum2 = Data.to(cip68_2);
 
