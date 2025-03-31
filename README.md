@@ -12,6 +12,7 @@ A tool for minting CIP-68 tokens with proper support for burning
 2. [Mint Chocolate Chip](https://github.com/SundaeSwap-finance/mint-chocolate-chip/blob/main/validators/mint.ak)
 3. [CIP-68 standard](https://cips.cardano.org/cip/CIP-68)
 4. [Lucid Evolution Docs](https://anastasia-labs.github.io/lucid-evolution/)
+5. [Unknown](https://github.com/apea-aiken-batch-2/nollan_mint_ai/blob/2bea4764385071aae2f08525a77aa13581aaccf0/lib/modules/types.ak#L6)
 
 ## Acknowledgements
 

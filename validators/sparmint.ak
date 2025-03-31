@@ -1,5 +1,6 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
@@ -8,6 +9,16 @@ use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 pub type MintAction {
   Mint
   Burn
+}
+
+pub type Extra {
+  admin: VerificationKeyHash,
+}
+
+pub type Cip68 {
+  metadata: Pairs<ByteArray, Data>,
+  version: Int,
+  extra: Extra,
 }
 
 pub fn drop_prefix(asset_name: ByteArray) {
@@ -121,7 +132,7 @@ validator sparmint(oneshot: OutputReference) {
   }
 
   spend(
-    _datum: Option<Data>,
+    datum: Option<Cip68>,
     _redeemer: Data,
     focus_input_ref: OutputReference,
     self: Transaction,
@@ -146,13 +157,20 @@ validator sparmint(oneshot: OutputReference) {
       find_reference_utxo(outputs, policy_id, reference_nft_name)
 
     // reference utxo must be on same address 
-    expect InlineDatum(_reference_datum_output) = reference_output.datum
+    expect InlineDatum(_new_reference_datum) = reference_output.datum
 
+    // ---------------------------------------------------------------------------------------------------------------------------- 
+    expect Some(prev_metadata) = datum
+
+    // ----------------------------------------------------------------------------------------------------------------------------
+    // ensure it confroms to CIP88
+    // expect Cip68(_new_metadata, _version, extra) = new_reference_datum
     and {
       // token must remain on same address
       reference_output.address == focus_input.output.address,
       1 == list.length(policy_tokens),
       bytearray.take(reference_nft_name, 4) == #"000643b0",
+      list.has(self.extra_signatories, prev_metadata.extra.admin),
     }
   }
 

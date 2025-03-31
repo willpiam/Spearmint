@@ -9,6 +9,7 @@ import {
   Lucid,
   MintingPolicy,
   mintingPolicyToId,
+  paymentCredentialOf,
   SpendingValidator,
   toUnit,
   validatorToAddress,
@@ -87,7 +88,8 @@ Deno.test("Initial Minting", async () => {
     image: "https://example.com/image.jpg",
   });
   const version = 1n;
-  const extra: Data[] = [];
+  // const extra: Data[] = [];
+  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
   const cip68 = new Constr(0, [metadata, version, extra]);
   const datum = Data.to(cip68);
 
@@ -192,6 +194,7 @@ Deno.test("Metadata Update", async () => {
         [refUnit]: 1n,
       },
     )
+    .addSigner(alice.address)
     .complete();
 
   const txSigned = await tx.sign.withWallet().complete();

@@ -9,6 +9,7 @@ import {
   Lucid,
   MintingPolicy,
   mintingPolicyToId,
+  paymentCredentialOf,
   SpendingValidator,
   toUnit,
   validatorToAddress,
@@ -79,7 +80,9 @@ const metadata = Data.fromJson({
     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Minze.jpg/1280px-Minze.jpg",
 });
 const version = 1n;
-const extra: Data[] = [];
+// const extra: Data[] = [];
+// const extra = Data.to(new Constr(0, [paymentCredentialOf(alice.address).hash]));
+const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
 const cip68 = new Constr(0, [metadata, version, extra]);
 const datum = Data.to(cip68);
 
@@ -171,6 +174,7 @@ const datum2 = Data.to(cip68_2);
     }, {
       [refUnit]: 1n,
     })
+    .addSigner(alice.address)
     .complete();
 
   const txSigned = await tx.sign.withWallet().complete();
