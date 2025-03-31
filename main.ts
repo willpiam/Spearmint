@@ -1,12 +1,22 @@
-import { Emulator, Lucid, SpendingValidator, generateEmulatorAccount,
-   MintingPolicy, mintingPolicyToId, applyParamsToScript, Constr,  validatorToAddress, 
-   getAddressDetails, toUnit, 
-   fromText,
-   Data} from "npm:@lucid-evolution/lucid";
+import {
+  applyParamsToScript,
+  Constr,
+  Data,
+  Emulator,
+  fromText,
+  generateEmulatorAccount,
+  getAddressDetails,
+  Lucid,
+  MintingPolicy,
+  mintingPolicyToId,
+  SpendingValidator,
+  toUnit,
+  validatorToAddress,
+} from "npm:@lucid-evolution/lucid";
 import blueprint from "./plutus.json" with { type: "json" };
 
 const alice = generateEmulatorAccount({
-    lovelace: 200n * 1_000_000n,
+  lovelace: 200n * 1_000_000n,
 });
 
 const emulator = new Emulator([alice]);
@@ -21,13 +31,15 @@ const utxoRefParam = new Constr(0, [
   BigInt(utxo.outputIndex),
 ]);
 
-const rawValidator = blueprint.validators.find(v => v.title === "sparmint.sparmint.spend")!.compiledCode;
+const rawValidator =
+  blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+    .compiledCode;
 const parameterizedValidator = applyParamsToScript(
   rawValidator,
-  [utxoRefParam]
-)
+  [utxoRefParam],
+);
 
-const validator : SpendingValidator = {
+const validator: SpendingValidator = {
   type: "PlutusV3",
   script: parameterizedValidator,
 };
@@ -37,7 +49,11 @@ const mintingPolicy: MintingPolicy = validator as MintingPolicy;
 const policyId = mintingPolicyToId(mintingPolicy);
 console.log(`Policy ID:\t${policyId}`);
 
-const lockAddress = validatorToAddress("Preview", validator, getAddressDetails(alice.address).stakeCredential);
+const lockAddress = validatorToAddress(
+  "Preview",
+  validator,
+  getAddressDetails(alice.address).stakeCredential,
+);
 console.log(`Lock Address:\t${lockAddress}`);
 
 const tokenName = "Menthol";
@@ -51,21 +67,24 @@ console.log(`User Unit:\t${userUnit}`);
 
 const metadata = Data.fromJson({
   name: tokenName,
-  description: "Spearmint (Mentha spicata), also known as garden mint, common mint, lamb mint and mackerel mint,[5][6] is native to Europe and southern temperate Asia, extending from Ireland in the west to southern China in the east.",
-  image: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Minze.jpg/1280px-Minze.jpg",
-})
+  description:
+    "Spearmint (Mentha spicata), also known as garden mint, common mint, lamb mint and mackerel mint,[5][6] is native to Europe and southern temperate Asia, extending from Ireland in the west to southern China in the east.",
+  image:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Minze.jpg/1280px-Minze.jpg",
+});
 const version = 1n;
-const extra : Data[] = [];
+const extra: Data[] = [];
 const cip68 = new Constr(0, [metadata, version, extra]);
 const datum = Data.to(cip68);
 
 const MintAction = {
   Mint: Data.to(new Constr(0, [])),
   Burn: Data.to(new Constr(1, [])),
-}
+};
 
 const tx = await lucid
   .newTx()
+  .collectFrom([utxo])
   .mintAssets(
     {
       [refUnit]: 1n,
@@ -74,26 +93,20 @@ const tx = await lucid
     MintAction.Mint,
   )
   .attach.MintingPolicy(mintingPolicy)
-  .pay.ToContract(lockAddress, 
-    {
-      kind: "inline",
-      value: datum
-    },
-    {
-      [refUnit]: 1n,
-    }
-  )
-  .complete()
+  .pay.ToContract(lockAddress, {
+    kind: "inline",
+    value: datum,
+  }, {
+    [refUnit]: 1n,
+  })
+  .complete();
 
 console.log(tx);
 
 // must mint reference NFT with user tokens
 
-
 // cannot burn reference NFT
 
-
 // cannot mint more than 1 reference NFT
-
 
 // reference token can only be sent to the address it already exists on

@@ -60,6 +60,7 @@ validator sparmint(oneshot: OutputReference) {
         // if prefixes are removed the reference NFT name and user token name are the same
         // reference NFT on own utxo
 
+
         expect Some(Pair(reference_nft_name, reference_nft_amount)) =
           mint_list
             |> list.find(
@@ -69,7 +70,6 @@ validator sparmint(oneshot: OutputReference) {
                   asset_prefix == #"000643b0"
                 },
               )
-
         expect Some(Pair(user_token_name, user_token_amount)) =
           mint_list
             |> list.find(
@@ -83,23 +83,20 @@ validator sparmint(oneshot: OutputReference) {
                   }
                 },
               )
-
         let reference_utxo =
           find_reference_utxo(outputs, policy_id, reference_nft_name)
-
         // reference utxo must be locked in the spend script of this validator
         expect Script(reference_script) =
           reference_utxo.address.payment_credential
-
         // there is a datum on the reference utxo
         expect InlineDatum(_reference_datum) = reference_utxo.datum
-
         // todo: check that the reference utxo is locked in the spend script of this validator
         and {
           reference_script == policy_id,
           user_token_amount > 0,
           1 == reference_nft_amount,
           2 == list.length(mint_list),
+          // this "oneshot" line seems to be causing the issues
           list.any(inputs, fn(input) { input.output_reference == oneshot }),
           drop_prefix(reference_nft_name) == drop_prefix(user_token_name),
         }
