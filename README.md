@@ -7,7 +7,13 @@ A tool for minting CIP-68 tokens with proper support for burning
 1. [Aiken Docs & standard library](https://aiken-lang.github.io/stdlib/)
 2. [Mint Chocolate Chip](https://github.com/SundaeSwap-finance/mint-chocolate-chip/blob/main/validators/mint.ak)
 3. [CIP-68 standard](https://cips.cardano.org/cip/CIP-68)
+4. [Lucid Evolution Docs](https://anastasia-labs.github.io/lucid-evolution/)
 
+## Acknowledgements
+
+Thank you to the following people for helping with this script
+
+## Aiken default readme (to be removed)
 
 Write validators in the `validators` folder, and supporting functions in the `lib` folder using `.ak` as a file extension.
 
