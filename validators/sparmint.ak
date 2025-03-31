@@ -1,6 +1,7 @@
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
+use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 
@@ -85,11 +86,17 @@ validator sparmint(oneshot: OutputReference) {
 
         let reference_utxo =
           find_reference_utxo(outputs, policy_id, reference_nft_name)
+
+        // reference utxo must be locked in the spend script of this validator
+        expect Script(reference_script) =
+          reference_utxo.address.payment_credential
+
         // there is a datum on the reference utxo
         expect InlineDatum(_reference_datum) = reference_utxo.datum
 
         // todo: check that the reference utxo is locked in the spend script of this validator
         and {
+          reference_script == policy_id,
           user_token_amount > 0,
           1 == reference_nft_amount,
           2 == list.length(mint_list),
@@ -120,15 +127,37 @@ validator sparmint(oneshot: OutputReference) {
   spend(
     _datum: Option<Data>,
     _redeemer: Data,
-    _utxo: OutputReference,
+    focus_input_ref: OutputReference,
     self: Transaction,
   ) {
-    // todo
     // find the new reference utxo
-    let Transaction { outputs, .. } = self
-    let reference_utxo =
+    let Transaction { inputs, outputs, .. } = self
+
+    // find policy id
+    expect Some(focus_input) =
+      list.find(inputs, fn(input) { input.output_reference == focus_input_ref })
+    expect Script(policy_id) = focus_input.output.address.payment_credential
+
+    // find reference NFT name
+    let policy_tokens =
+      focus_input.output.value
+        |> assets.tokens(policy_id)
+        |> dict.to_pairs()
+
+    expect Some(Pair(reference_nft_name, _)) = list.head(policy_tokens)
+
+    let reference_output =
       find_reference_utxo(outputs, policy_id, reference_nft_name)
-    True
+
+    // reference utxo must be on same address 
+    expect InlineDatum(_reference_datum_output) = reference_output.datum
+
+    and {
+      // token must remain on same address
+      reference_output.address == focus_input.output.address,
+      1 == list.length(policy_tokens),
+      bytearray.take(reference_nft_name, 4) == #"000643b0",
+    }
   }
 
   else(_) {
