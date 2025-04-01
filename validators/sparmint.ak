@@ -25,12 +25,12 @@ pub fn drop_prefix(asset_name: ByteArray) {
   bytearray.drop(asset_name, 4)
 }
 
-pub fn find_reference_utxo(
+pub fn find_ref_nft_output(
   outputs: List<Output>,
   policy_id: PolicyId,
-  reference_nft_name: ByteArray,
+  ref_nft_name: ByteArray,
 ) {
-  expect Some(reference_utxo) =
+  expect Some(ref_nft_output) =
     outputs
       |> list.find(
           fn(output) {
@@ -40,13 +40,13 @@ pub fn find_reference_utxo(
               |> list.any(
                   fn(pair) {
                     let Pair(asset_name, _amount) = pair
-                    asset_name == reference_nft_name
+                    asset_name == ref_nft_name
                   },
                 )
           },
         )
 
-  reference_utxo
+  ref_nft_output
 }
 
 // prefixes
@@ -71,7 +71,7 @@ validator sparmint(oneshot: OutputReference) {
         // if prefixes are removed the reference NFT name and user token name are the same
         // reference NFT on own utxo
 
-        expect Some(Pair(reference_nft_name, reference_nft_amount)) =
+        expect Some(Pair(ref_nft_name, reference_nft_amount)) =
           mint_list
             |> list.find(
                 fn(pair) {
@@ -93,22 +93,30 @@ validator sparmint(oneshot: OutputReference) {
                   }
                 },
               )
-        let reference_utxo =
-          find_reference_utxo(outputs, policy_id, reference_nft_name)
-        // reference utxo must be locked in the spend script of this validator
-        expect Script(reference_script) =
-          reference_utxo.address.payment_credential
-        // there is a datum on the reference utxo
-        expect InlineDatum(_reference_datum) = reference_utxo.datum
-        // todo: check that the reference utxo is locked in the spend script of this validator
+
+        // get the output which will hold the ref nft
+        let ref_nft_output =
+          find_ref_nft_output(outputs, policy_id, ref_nft_name)
+        // output with ref nft must be locked in the spend script of this validator which is also the policy id
+        expect Script(ref_nft_script) =
+          ref_nft_output.address.payment_credential
+        // there is a datum on the ref nft output
+        expect InlineDatum(reference_datum) = ref_nft_output.datum
+        // ensure the datum is a Cip68
+        expect _ref_metadata: Cip68 = reference_datum
+
+        // todo: check the ref nft is locked in the spend script of this validator
         and {
-          reference_script == policy_id,
+          ref_nft_script == policy_id,
           user_token_amount > 0,
+          // there must be exactly one reference nft
           1 == reference_nft_amount,
+          // we mint exactly 2 tokens on this policy
           2 == list.length(mint_list),
           // this "oneshot" line seems to be causing the issues
           list.any(inputs, fn(input) { input.output_reference == oneshot }),
-          drop_prefix(reference_nft_name) == drop_prefix(user_token_name),
+          // without prefix the reference nft name and user token name are the same
+          drop_prefix(ref_nft_name) == drop_prefix(user_token_name),
         }
       }
       Burn -> {
@@ -153,25 +161,22 @@ validator sparmint(oneshot: OutputReference) {
         |> assets.tokens(policy_id)
         |> dict.to_pairs()
 
-    expect Some(Pair(reference_nft_name, _)) = list.head(policy_tokens)
-
-    let reference_output =
-      find_reference_utxo(outputs, policy_id, reference_nft_name)
+    expect Some(Pair(ref_nft_name, _)) = list.head(policy_tokens)
+    let ref_nft_output = find_ref_nft_output(outputs, policy_id, ref_nft_name)
 
     // prove that the new reference datum is a Cip68 (and that it has the fields we expect)
-    // ----------------------------------------------------------------------------------------------------
-    expect InlineDatum(new_reference_datum) = reference_output.datum
-    expect _new_metadata: Cip68 = new_reference_datum
-    // ----------------------------------------------------------------------------------------------------
+    expect InlineDatum(new_ref_nft_datum) = ref_nft_output.datum
+    expect _new_metadata: Cip68 = new_ref_nft_datum
+
     and {
       // admin must have signed the transaction
       list.has(self.extra_signatories, prev_metadata.extra.admin),
       // token must remain on same address
-      reference_output.address == focus_input.output.address,
+      ref_nft_output.address == focus_input.output.address,
       // there must be no user tokens present on the input with the ref token (keep??)
       1 == list.length(policy_tokens),
       // the reference token name must have the expected prefix
-      bytearray.take(reference_nft_name, 4) == #"000643b0",
+      bytearray.take(ref_nft_name, 4) == #"000643b0",
     }
   }
 
