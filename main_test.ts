@@ -15,7 +15,7 @@ import {
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
 import blueprint from "./plutus.json" with { type: "json" };
-import { assert, assertEquals, assertExists } from "@std/assert";
+import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 
 /*
 
@@ -34,7 +34,11 @@ const alice = generateEmulatorAccount({
   lovelace: 200n * 1_000_000n,
 });
 
-const emulator = new Emulator([alice]);
+const bob = generateEmulatorAccount({
+  lovelace: 200n * 1_000_000n,
+});
+
+const emulator = new Emulator([alice, bob]);
 const lucid = await Lucid(emulator, "Preview");
 lucid.selectWallet.fromSeed(alice.seedPhrase);
 
@@ -207,4 +211,46 @@ Deno.test("Metadata Update", async () => {
   const updatedMetadata = await lucid.datumOf(refUtxo2);
 
   assert(updatedMetadata !== initialMetadata, "Metadata should be updated");
+});
+
+// admin signer must be present to update metadata
+Deno.test("Metadata Update without Admin", async () => {
+  const refUtxo = await lucid.utxoByUnit(refUnit);
+
+  const metadata2 = Data.fromJson({
+    name: tokenName,
+    description: "Updated description",
+    image: "https://example.com/updated-image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
+  const cip68_2 = new Constr(0, [metadata2, version, extra]);
+  const datum2 = Data.to(cip68_2);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([refUtxo], Data.void())
+    .attach.SpendingValidator(validator)
+    .pay.ToContract(
+      validatorToAddress(
+        "Preview",
+        validator,
+        getAddressDetails(alice.address).stakeCredential,
+      ),
+      { kind: "inline", value: datum2 },
+      { [refUnit]: 1n },
+    );
+  // .addSigner(alice.address);
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the admin signature is required by the spending validator",
+  );
+
+  await assertRejects(
+    () => tx.addSigner(bob.address).complete(),
+    "Transaction should fail because, though we've added a signer we have not added the admin signer",
+  );
+
+  await tx.addSigner(alice.address).complete();
 });
