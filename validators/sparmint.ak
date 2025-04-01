@@ -13,6 +13,7 @@ pub type MintAction {
 
 pub type Extra {
   admin: VerificationKeyHash,
+  asset_type: ByteArray,
 }
 
 pub type Cip68 {
@@ -26,6 +27,7 @@ pub fn drop_prefix(asset_name: ByteArray) -> ByteArray {
   bytearray.drop(asset_name, 4)
 }
 
+/// find the output with the CIP-68 reference token
 pub fn find_ref_nft_output(
   outputs: List<Output>,
   policy_id: PolicyId,
@@ -48,6 +50,20 @@ pub fn find_ref_nft_output(
         )
 
   ref_nft_output
+}
+
+/// ensure metadata is a in a valid format
+/// one could add tests here to ensure datum.metadata is valid considering the asset type
+pub fn valid_metadata(datum: Cip68) -> Bool {
+  when datum.extra.asset_type is {
+    // 222 (NFT)
+    #"000de140" -> True
+    // 333 (FT)
+    #"0014df10" -> True
+    // 444 (RFT)
+    #"001bc280" -> True
+    _ -> False
+  }
 }
 
 // prefixes
@@ -102,7 +118,7 @@ validator sparmint(oneshot: OutputReference) {
         // there is a datum on the reference nft output
         expect InlineDatum(ref_nft_datum) = ref_nft_output.datum
         // the datum is of type Cip68
-        expect _ref_metadata: Cip68 = ref_nft_datum
+        expect ref_metadata: Cip68 = ref_nft_datum
 
         and {
           // the spend script of the ref nft must be the one specified in this validator (meaning it matches the policy id)
@@ -117,6 +133,10 @@ validator sparmint(oneshot: OutputReference) {
           list.any(inputs, fn(input) { input.output_reference == oneshot }),
           // without prefix the reference nft name and user token name are the same
           drop_prefix(ref_nft_name) == drop_prefix(user_token_name),
+          // the user token CIP-68 prefix must equal metadata.extra.asset_type
+          bytearray.take(user_token_name, 4) == ref_metadata.extra.asset_type,
+          // metadata is valid considering the token type
+          valid_metadata(ref_metadata),
         }
       }
       Burn -> {
@@ -176,7 +196,7 @@ validator sparmint(oneshot: OutputReference) {
     // there must be an inline datum on the reference nft output to hold the metadata
     expect InlineDatum(new_ref_nft_datum) = ref_nft_output.datum
     // the new datum must be of type Cip68
-    expect _new_metadata: Cip68 = new_ref_nft_datum
+    expect new_metadata: Cip68 = new_ref_nft_datum
 
     and {
       // admin must have signed the transaction
@@ -187,6 +207,10 @@ validator sparmint(oneshot: OutputReference) {
       1 == list.length(policy_tokens),
       // the reference token name must have the expected prefix
       bytearray.take(ref_nft_name, 4) == #"000643b0",
+      // asset type must not change
+      prev_metadata.extra.asset_type == new_metadata.extra.asset_type,
+      // metadata is valid considering the token type
+      valid_metadata(new_metadata),
     }
   }
 

@@ -3,6 +3,7 @@ import {
   Constr,
   Data,
   Emulator,
+  fromLabel,
   fromText,
   generateEmulatorAccount,
   getAddressDetails,
@@ -11,6 +12,7 @@ import {
   mintingPolicyToId,
   paymentCredentialOf,
   SpendingValidator,
+  toLabel,
   toUnit,
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
@@ -72,9 +74,10 @@ const mintingPolicy: MintingPolicy = validator as MintingPolicy;
 const policyId = mintingPolicyToId(mintingPolicy);
 const tokenName = "Menthol";
 
+const label = 222;
 const assetName = fromText(tokenName);
 const refUnit = toUnit(policyId, assetName, 100);
-const userUnit = toUnit(policyId, assetName, 222);
+const userUnit = toUnit(policyId, assetName, label);
 
 Deno.test("Initial Minting", async () => {
   const utxo = (await lucid.utxosAt(alice.address))[0];
@@ -92,7 +95,10 @@ Deno.test("Initial Minting", async () => {
   });
   const version = 1n;
   // const extra: Data[] = [];
-  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
   const cip68 = new Constr(0, [metadata, version, extra]);
   const datum = Data.to(cip68);
 
@@ -173,7 +179,10 @@ Deno.test("Metadata Update", async () => {
     image: "https://example.com/updated-image.jpg",
   });
   const version = 1n;
-  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
   const cip68_2 = new Constr(0, [metadata2, version, extra]);
   const datum2 = Data.to(cip68_2);
 
@@ -219,7 +228,10 @@ Deno.test("Metadata Update without Admin", async () => {
     image: "https://example.com/updated-image.jpg",
   });
   const version = 1n;
-  const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
   const cip68_2 = new Constr(0, [metadata2, version, extra]);
   const datum2 = Data.to(cip68_2);
 
@@ -436,5 +448,47 @@ Deno.test("Mint amount must be negative when burning", async () => {
   await assertRejects(
     () => tx.complete(),
     "Transaction should fail because the mint amount must be negative when burning",
+  );
+});
+
+Deno.test("Asset type in cip68.extra.asset_type must not change", async () => {
+  const refUtxo = await lucid.utxoByUnit(refUnit);
+
+  const metadata2 = Data.fromJson({
+    name: tokenName,
+    description: "Updated description",
+    image: "https://example.com/updated-image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(333), // this has changed and thus will violate the spending validator
+  ]);
+  const cip68_2 = new Constr(0, [metadata2, version, extra]);
+  const datum2 = Data.to(cip68_2);
+
+  const tx = await lucid
+    .newTx()
+    .collectFrom([refUtxo], Data.void())
+    .attach.SpendingValidator(validator)
+    .pay.ToContract(
+      validatorToAddress(
+        "Preview",
+        validator,
+        getAddressDetails(alice.address).stakeCredential,
+      ),
+      {
+        kind: "inline",
+        value: datum2,
+      },
+      {
+        [refUnit]: 1n,
+      },
+    )
+    .addSigner(alice.address);
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the asset type in cip68.extra.asset_type has changed",
   );
 });

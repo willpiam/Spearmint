@@ -11,6 +11,7 @@ import {
   mintingPolicyToId,
   paymentCredentialOf,
   SpendingValidator,
+  toLabel,
   toUnit,
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
@@ -66,8 +67,9 @@ console.log(`Lock Address:\t\t${lockAddress}`);
 const tokenName = "Menthol";
 const assetName = fromText(tokenName);
 
+const label = 222;
 const refUnit = toUnit(policyId, assetName, 100);
-const userUnit = toUnit(policyId, assetName, 222);
+const userUnit = toUnit(policyId, assetName, label);
 
 console.log(`Ref Unit:\t\t${refUnit}`);
 console.log(`User Unit:\t\t${userUnit}`);
@@ -82,7 +84,10 @@ const metadata = Data.fromJson({
 const version = 1n;
 // const extra: Data[] = [];
 // const extra = Data.to(new Constr(0, [paymentCredentialOf(alice.address).hash]));
-const extra = new Constr(0, [paymentCredentialOf(alice.address).hash]);
+const extra = new Constr(0, [
+  paymentCredentialOf(alice.address).hash,
+  toLabel(label),
+]);
 const cip68 = new Constr(0, [metadata, version, extra]);
 const datum = Data.to(cip68);
 
