@@ -27,6 +27,11 @@ pub fn drop_prefix(asset_name: ByteArray) -> ByteArray {
   bytearray.drop(asset_name, 4)
 }
 
+/// get the CIP-68 prefix from the asset name
+pub fn get_prefix(asset_name: ByteArray) -> ByteArray {
+  bytearray.take(asset_name, 4)
+}
+
 /// find the output with the CIP-68 reference token
 pub fn find_ref_nft_output(
   outputs: List<Output>,
@@ -72,6 +77,14 @@ pub fn valid_metadata(datum: Cip68) -> Bool {
 // 001bc280 --> 444 (RFT)
 // 000643b0 --> 100 (Reference NFT)
 
+const nft_prefix: ByteArray = #"000de140"
+
+const ft_prefix: ByteArray = #"0014df10"
+
+const rft_prefix: ByteArray = #"001bc280"
+
+const ref_prefix: ByteArray = #"000643b0"
+
 validator sparmint(oneshot: OutputReference) {
   mint(action: MintAction, policy_id: PolicyId, self: Transaction) {
     let Transaction { inputs, mint, outputs, .. } = self
@@ -90,8 +103,7 @@ validator sparmint(oneshot: OutputReference) {
             |> list.find(
                 fn(pair) {
                   let Pair(asset_name, _amount) = pair
-                  let asset_prefix = bytearray.take(asset_name, 4)
-                  asset_prefix == #"000643b0"
+                  get_prefix(asset_name) == ref_prefix
                 },
               )
         // get the user token name and amount
@@ -100,11 +112,11 @@ validator sparmint(oneshot: OutputReference) {
             |> list.find(
                 fn(pair) {
                   let Pair(asset_name, _amount) = pair
-                  let asset_prefix = bytearray.take(asset_name, 4)
+                  let asset_prefix = get_prefix(asset_name)
                   or {
-                    asset_prefix == #"000de140",
-                    asset_prefix == #"0014df10",
-                    asset_prefix == #"001bc280",
+                    asset_prefix == nft_prefix,
+                    asset_prefix == ft_prefix,
+                    asset_prefix == rft_prefix,
                   }
                 },
               )
@@ -123,7 +135,7 @@ validator sparmint(oneshot: OutputReference) {
         and {
           // the spend script of the ref nft must be the one specified in this validator (meaning it matches the policy id)
           ref_nft_script == policy_id,
-          // we must mint a positive amount of the user token
+          // user token amount must be positive
           user_token_amount > 0,
           // there must be exactly one reference nft
           1 == reference_nft_amount,
@@ -134,7 +146,7 @@ validator sparmint(oneshot: OutputReference) {
           // without prefix the reference nft name and user token name are the same
           drop_prefix(ref_nft_name) == drop_prefix(user_token_name),
           // the user token CIP-68 prefix must equal metadata.extra.asset_type
-          bytearray.take(user_token_name, 4) == ref_metadata.extra.asset_type,
+          get_prefix(user_token_name) == ref_metadata.extra.asset_type,
           // metadata is valid considering the token type
           valid_metadata(ref_metadata),
         }
@@ -144,7 +156,7 @@ validator sparmint(oneshot: OutputReference) {
         expect [Pair(asset_name, amount)] = mint_list
 
         // get the CIP-68 token prefix
-        let asset_prefix = bytearray.take(asset_name, 4)
+        let asset_prefix = get_prefix(asset_name)
 
         and {
           // must only burn one type of token
@@ -153,9 +165,9 @@ validator sparmint(oneshot: OutputReference) {
           amount < 0,
           // must be one of the CIP-68 token prefixes other than the ref nft prefix
           or {
-            asset_prefix == #"000de140",
-            asset_prefix == #"0014df10",
-            asset_prefix == #"001bc280",
+            asset_prefix == nft_prefix,
+            asset_prefix == ft_prefix,
+            asset_prefix == rft_prefix,
           },
         }
       }
@@ -206,7 +218,7 @@ validator sparmint(oneshot: OutputReference) {
       // there must be no user tokens present on the input with the ref token 
       1 == list.length(policy_tokens),
       // the reference token name must have the expected prefix
-      bytearray.take(ref_nft_name, 4) == #"000643b0",
+      get_prefix(ref_nft_name) == ref_prefix,
       // asset type must not change
       prev_metadata.extra.asset_type == new_metadata.extra.asset_type,
       // metadata is valid considering the token type
