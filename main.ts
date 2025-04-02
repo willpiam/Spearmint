@@ -67,7 +67,7 @@ console.log(`Lock Address:\t\t${lockAddress}`);
 const tokenName = "Menthol";
 const assetName = fromText(tokenName);
 
-const label = 222;
+const label = 333;
 const refUnit = toUnit(policyId, assetName, 100);
 const userUnit = toUnit(policyId, assetName, label);
 

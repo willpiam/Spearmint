@@ -3,7 +3,6 @@ import {
   Constr,
   Data,
   Emulator,
-  fromLabel,
   fromText,
   generateEmulatorAccount,
   getAddressDetails,
@@ -74,7 +73,7 @@ const mintingPolicy: MintingPolicy = validator as MintingPolicy;
 const policyId = mintingPolicyToId(mintingPolicy);
 const tokenName = "Menthol";
 
-const label = 222;
+const label = 333;
 const assetName = fromText(tokenName);
 const refUnit = toUnit(policyId, assetName, 100);
 const userUnit = toUnit(policyId, assetName, label);
@@ -94,7 +93,6 @@ Deno.test("Initial Minting", async () => {
     image: "https://example.com/image.jpg",
   });
   const version = 1n;
-  // const extra: Data[] = [];
   const extra = new Constr(0, [
     paymentCredentialOf(alice.address).hash,
     toLabel(label),
@@ -462,12 +460,12 @@ Deno.test("Asset type in cip68.extra.asset_type must not change", async () => {
   const version = 1n;
   const extra = new Constr(0, [
     paymentCredentialOf(alice.address).hash,
-    toLabel(333), // this has changed and thus will violate the spending validator
+    toLabel(444), // this has changed and thus will violate the spending validator
   ]);
   const cip68_2 = new Constr(0, [metadata2, version, extra]);
   const datum2 = Data.to(cip68_2);
 
-  const tx = await lucid
+  const tx = lucid
     .newTx()
     .collectFrom([refUtxo], Data.void())
     .attach.SpendingValidator(validator)
@@ -490,5 +488,264 @@ Deno.test("Asset type in cip68.extra.asset_type must not change", async () => {
   await assertRejects(
     () => tx.complete(),
     "Transaction should fail because the asset type in cip68.extra.asset_type has changed",
+  );
+});
+
+Deno.test("Any owner can burn", async () => {
+  // send 50 tokens to bob
+  {
+    const tx = await lucid
+      .newTx()
+      .pay.ToAddress(bob.address, {
+        [userUnit]: 50n,
+      })
+      .complete();
+
+    const txSigned = await tx.sign.withWallet().complete();
+    await txSigned.submit();
+    emulator.awaitBlock(1);
+
+    const bobMentholUtxos = await lucid.utxosAtWithUnit(bob.address, userUnit);
+    assert(bobMentholUtxos.length > 0, "Bob should have menthol tokens");
+  }
+
+  // burn 50 tokens
+  {
+    lucid.selectWallet.fromSeed(bob.seedPhrase);
+    const tx = await lucid
+      .newTx()
+      .attach.MintingPolicy(mintingPolicy)
+      .mintAssets({
+        [userUnit]: -50n,
+      }, MintAction.Burn)
+      .complete();
+
+    const txSigned = await tx.sign.withWallet().complete();
+    await txSigned.submit();
+    emulator.awaitBlock(1);
+
+    const bobMentholUtxos = await lucid.utxosAtWithUnit(bob.address, userUnit);
+    assert(bobMentholUtxos.length === 0, "Bob should have no menthol tokens");
+  }
+
+  lucid.selectWallet.fromSeed(alice.seedPhrase); // change back to alice
+});
+
+Deno.test("Can mint NFTs", async () => {
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+
+  const label = 222;
+  const tokenName = "Mentha";
+  const assetName = fromText(tokenName);
+  const refUnit = toUnit(policyId, assetName, 100);
+  const userUnit = toUnit(policyId, assetName, label);
+
+  const lockAddress = validatorToAddress(
+    "Preview",
+    validator,
+    getAddressDetails(alice.address).stakeCredential,
+  );
+
+  const metadata = Data.fromJson({
+    name: tokenName,
+    description: "Test description",
+    image: "https://example.com/image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68 = new Constr(0, [metadata, version, extra]);
+  const datum = Data.to(cip68);
+
+  const MintAction = {
+    Mint: Data.to(new Constr(0, [])),
+    Burn: Data.to(new Constr(1, [])),
+  };
+
+  /// minting more than one token with the nft prefix is not allowed
+  await assertRejects(
+    () =>
+      lucid
+        .newTx()
+        .collectFrom([utxo])
+        .attach.MintingPolicy(mintingPolicy)
+        .mintAssets(
+          {
+            [refUnit]: 1n,
+            [userUnit]: 2n, // too many user tokens
+          },
+          MintAction.Mint,
+        )
+        .pay.ToContract(lockAddress, {
+          kind: "inline",
+          value: datum,
+        }, {
+          [refUnit]: 1n,
+        })
+        .complete(),
+    "Transaction should fail because minting more than one token with the nft prefix is not allowed",
+  );
+
+  const tx = await lucid
+    .newTx()
+    .collectFrom([utxo])
+    .attach.MintingPolicy(mintingPolicy)
+    .mintAssets(
+      {
+        [refUnit]: 1n,
+        [userUnit]: 1n,
+      },
+      MintAction.Mint,
+    )
+    .pay.ToContract(lockAddress, {
+      kind: "inline",
+      value: datum,
+    }, {
+      [refUnit]: 1n,
+    })
+    .complete();
+
+  const txSigned = await tx.sign.withWallet().complete();
+  const txHash = await txSigned.submit();
+  emulator.awaitBlock(1);
+
+  assertExists(txHash, "Transaction hash should be created");
+  assertEquals(
+    await balanceOf(alice.address, userUnit),
+    1n,
+    "User should have 1000 tokens",
+  );
+});
+
+Deno.test("User token and reference token must be minted together", async () => {
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+
+  const label = 222;
+  const tokenName = "Mentha";
+  const assetName = fromText(tokenName);
+  const refUnit = toUnit(policyId, assetName, 100);
+  const userUnit = toUnit(policyId, assetName, label);
+
+  const lockAddress = validatorToAddress(
+    "Preview",
+    validator,
+    getAddressDetails(alice.address).stakeCredential,
+  );
+
+  const metadata = Data.fromJson({
+    name: tokenName,
+    description: "Test description",
+    image: "https://example.com/image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68 = new Constr(0, [metadata, version, extra]);
+  const datum = Data.to(cip68);
+
+  const MintAction = {
+    Mint: Data.to(new Constr(0, [])),
+    Burn: Data.to(new Constr(1, [])),
+  };
+
+  await assertRejects(
+    () =>
+      lucid
+        .newTx()
+        .collectFrom([utxo])
+        .attach.MintingPolicy(mintingPolicy)
+        .mintAssets(
+          {
+            [refUnit]: 1n,
+            [userUnit]: 1n,
+          },
+          MintAction.Mint,
+        )
+        .complete(),
+    "Transaction should fail because the reference token must be sent to the spend script",
+  );
+
+  await assertRejects(
+    () =>
+      lucid
+        .newTx()
+        .collectFrom([utxo])
+        .attach.MintingPolicy(mintingPolicy)
+        .mintAssets(
+          {
+            [refUnit]: 1n,
+          },
+          MintAction.Mint,
+        )
+        .pay.ToContract(lockAddress, {
+          kind: "inline",
+          value: datum,
+        }, {
+          [refUnit]: 1n,
+        })
+        .complete(),
+    "Transaction should fail because the user token must be minted",
+  );
+
+  await assertRejects(
+    () =>
+      lucid
+        .newTx()
+        .collectFrom([utxo])
+        .attach.MintingPolicy(mintingPolicy)
+        .mintAssets(
+          {
+            [userUnit]: 1n,
+          },
+          MintAction.Mint,
+        )
+        .complete(),
+    "Transaction should fail because the reference token must be minted",
   );
 });

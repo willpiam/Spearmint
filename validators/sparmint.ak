@@ -135,8 +135,12 @@ validator sparmint(oneshot: OutputReference) {
         and {
           // the spend script of the ref nft must be the one specified in this validator (meaning it matches the policy id)
           ref_nft_script == policy_id,
-          // user token amount must be positive
-          user_token_amount > 0,
+          // user token amount must be positive or EXACTLY 1 if the token is an NFT
+          if get_prefix(user_token_name) == nft_prefix {
+            1 == user_token_amount
+          } else {
+            user_token_amount > 0
+          },
           // there must be exactly one reference nft
           1 == reference_nft_amount,
           // we mint exactly 2 types of tokens on this policy
