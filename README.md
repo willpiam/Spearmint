@@ -2,9 +2,15 @@
 
 A tool for minting CIP-68 tokens with proper support for burning
 
-## Todo
+## Important Files
 
-- [x] put field in datum to control who has authority to update the metadata
+### validators/sparmint.ak
+
+My aiken contract for minting, burning, and updating metadata.
+
+### main_test.ts
+
+Unit tests for my contracts.
 
 ## References
 
@@ -22,6 +28,42 @@ Thank you to the following people for helping with this script
 
 Mentioned that the way to encode an output reference off-chain before using it
 to oneshot a validator had changed between plutusV2 and V3.
+
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
+<br/>
 
 ## Aiken default readme (to be removed)
 
