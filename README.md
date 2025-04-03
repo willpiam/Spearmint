@@ -24,10 +24,15 @@ Unit tests for my contracts.
 
 Thank you to the following people for helping with this script
 
-### MGpai (Anastasia Labs discord)
+### MGpai
 
 Mentioned that the way to encode an output reference off-chain before using it
-to oneshot a validator had changed between plutusV2 and V3.
+to oneshot a validator had changed between plutusV2 and V3. Anastasia Labs
+discord.
+
+### keyanm
+
+Read the code and offered suggestions. Aiken channel in the TxPipe discord.
 
 <br/>
 <br/>
