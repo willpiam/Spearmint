@@ -73,11 +73,8 @@ pub fn valid_metadata(datum: Cip68) -> Bool {
 // 000643b0 --> 100 (Reference NFT)
 
 const nft_prefix: ByteArray = #"000de140"
-
 const ft_prefix: ByteArray = #"0014df10"
-
 const rft_prefix: ByteArray = #"001bc280"
-
 const ref_prefix: ByteArray = #"000643b0"
 
 validator sparmint(oneshot: OutputReference) {

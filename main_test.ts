@@ -749,3 +749,81 @@ Deno.test("User token and reference token must be minted together", async () => 
     "Transaction should fail because the reference token must be minted",
   );
 });
+
+// Deno.test("Try to place a user token along with the reference token", async () => {
+
+
+// })
+
+Deno.test("Reference token must be sent to spend script during mint", async () => {
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+
+  const label = 222;
+  const tokenName = "Mentha";
+  const assetName = fromText(tokenName);
+  const refUnit = toUnit(policyId, assetName, 100);
+  const userUnit = toUnit(policyId, assetName, label);
+
+  // const lockAddress = validatorToAddress(
+  //   "Preview",
+  //   validator,
+  //   getAddressDetails(alice.address).stakeCredential,
+  // );
+
+  const metadata = Data.fromJson({
+    name: tokenName,
+    description: "Test description",
+    image: "https://example.com/image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68 = new Constr(0, [metadata, version, extra]);
+  const datum = Data.to(cip68);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([utxo])
+    .attach.MintingPolicy(mintingPolicy)
+    .mintAssets(
+      {
+        [refUnit]: 1n,
+        [userUnit]: 1n,
+      },
+      MintAction.Mint,
+    )
+    .pay.ToContract(bob.address, {
+      kind: "inline",
+      value: datum,
+    }, {
+      [refUnit]: 1n,
+    })
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the reference token must be sent to the spend script during minting"
+  );
+});

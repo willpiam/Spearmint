@@ -12,6 +12,12 @@ My aiken contract for minting, burning, and updating metadata.
 
 Unit tests for my contracts.
 
+## Plans 
+
+### A Varient specifically for NFTs
+
+Will require both the user nft and reference NFT be burnt. 
+
 ## References
 
 1. [Aiken Docs & standard library](https://aiken-lang.github.io/stdlib/)
