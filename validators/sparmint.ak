@@ -1,5 +1,6 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use cardano/address.{Script}
@@ -57,13 +58,33 @@ pub fn find_ref_nft_output(
 pub fn valid_metadata(datum: Cip68) -> Bool {
   when datum.extra.asset_type is {
     // 222 (NFT)
-    #"000de140" -> True
+    #"000de140" -> {
+      let field_names = datum.metadata 
+        |> pairs.keys()
+
+        and {
+          // check for "name" field (6E616D65)
+          field_names |> list.has(#"6E616D65"),
+          // check for "image" field ()
+          // field_names |> list.has(#""),
+          True
+        }
+
+    } 
     // 333 (FT)
     #"0014df10" -> True
     // 444 (RFT)
     #"001bc280" -> True
     _ -> False
   }
+}
+
+/// only ada and the reference NFT are allowed on the ref nft output
+pub fn is_alone(output: Output) -> Bool {
+  1 == (output.value
+    |> assets.without_lovelace()
+    |> assets.flatten()
+    |> list.length())
 }
 
 // prefixes
@@ -125,11 +146,7 @@ validator sparmint(oneshot: OutputReference) {
 
         and {
           // only ada and the reference NFT are allowed on the ref nft output
-          1 == (ref_nft_output.value
-            |> assets.without_lovelace()
-            |> assets.flatten()
-            |> list.length()),
-
+          is_alone(ref_nft_output),
           // the spend script of the ref nft must be the one specified in this validator (meaning it matches the policy id)
           ref_nft_script == policy_id,
           // user token amount must be positive or EXACTLY 1 if the token is an NFT
@@ -173,12 +190,7 @@ validator sparmint(oneshot: OutputReference) {
     }
   }
 
-  spend(
-    datum: Option<Cip68>,
-    _redeemer: Data,
-    focus_input_ref: OutputReference,
-    self: Transaction,
-  ) {
+  spend(datum: Option<Cip68>, _redeemer: Data, focus_input_ref: OutputReference, self: Transaction) {
     // get previous metadata from the datum
     expect Some(prev_metadata) = datum
 
@@ -204,6 +216,8 @@ validator sparmint(oneshot: OutputReference) {
     expect new_metadata: Cip68 = new_ref_nft_datum
 
     and {
+      // only ada and the reference NFT are allowed on the ref nft output
+      is_alone(ref_nft_output),
       // admin must have signed the transaction
       list.has(self.extra_signatories, prev_metadata.extra.admin),
       // token must remain on same address

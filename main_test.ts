@@ -14,6 +14,8 @@ import {
   SpendingValidator,
   toLabel,
   toUnit,
+  TxBuilder,
+  TxBuilderError,
   unixTimeToSlot,
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
@@ -27,7 +29,6 @@ import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
     deno test --allow-read
 
 */
-
 const MintAction = {
   Mint: Data.to(new Constr(0, [])),
   Burn: Data.to(new Constr(1, [])),
@@ -101,11 +102,6 @@ Deno.test("Initial Minting", async () => {
   ]);
   const cip68 = new Constr(0, [metadata, version, extra]);
   const datum = Data.to(cip68);
-
-  const MintAction = {
-    Mint: Data.to(new Constr(0, [])),
-    Burn: Data.to(new Constr(1, [])),
-  };
 
   const tx = await lucid
     .newTx()
@@ -582,11 +578,6 @@ Deno.test("Can mint NFTs", async () => {
   const cip68 = new Constr(0, [metadata, version, extra]);
   const datum = Data.to(cip68);
 
-  const MintAction = {
-    Mint: Data.to(new Constr(0, [])),
-    Burn: Data.to(new Constr(1, [])),
-  };
-
   /// minting more than one token with the nft prefix is not allowed
   await assertRejects(
     () =>
@@ -690,11 +681,6 @@ Deno.test("User token and reference token must be minted together", async () => 
   ]);
   const cip68 = new Constr(0, [metadata, version, extra]);
   const datum = Data.to(cip68);
-
-  const MintAction = {
-    Mint: Data.to(new Constr(0, [])),
-    Burn: Data.to(new Constr(1, [])),
-  };
 
   await assertRejects(
     () =>
@@ -902,7 +888,6 @@ Deno.test("Cannot place a user token in same utxo as reference token -- on mint"
 
 Deno.test("Cannot place any other token in same utxo as reference token -- on mint", async () => {
   // mint some other token using a native script
-
   const nativeMintingPolicy = scriptFromNative({
     type: "all",
     scripts: [
@@ -1003,4 +988,228 @@ Deno.test("Cannot place any other token in same utxo as reference token -- on mi
     () => tx.complete(),
     "Transaction should fail because the user token should not be in the same utxo as the reference token",
   );
+});
+
+Deno.test("Cannot place any other token in same utxo as reference token -- on spend", async () => {
+  // mint some other token using a native script
+  const nativeMintingPolicy = scriptFromNative({
+    type: "all",
+    scripts: [
+      { type: "sig", keyHash: paymentCredentialOf(alice.address).hash },
+      {
+        type: "before",
+        slot: unixTimeToSlot(lucid.config().network!, Date.now() + 1000000),
+      },
+    ],
+  });
+
+  const nativePolicyId = mintingPolicyToId(nativeMintingPolicy);
+
+  const otherTokenUnit = nativePolicyId + fromText("MyOtherToken");
+
+  const tx1 = await lucid
+    .newTx()
+    .mintAssets({
+      [otherTokenUnit]: 1n,
+    })
+    .pay.ToAddress(alice.address, { [otherTokenUnit]: 1n })
+    .validTo(Date.now() + 900000)
+    .attach.MintingPolicy(nativeMintingPolicy)
+    .complete();
+
+  const signed = await tx1.sign.withWallet().complete();
+  await signed.submit();
+  emulator.awaitBlock(1);
+
+  const refUtxo = await lucid.utxoByUnit(refUnit);
+  const initialMetadata = await lucid.datumOf(refUtxo);
+
+  const metadata2 = Data.fromJson({
+    name: tokenName,
+    description: "Updated description",
+    image: "https://example.com/updated-image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68_2 = new Constr(0, [metadata2, version, extra]);
+  const datum2 = Data.to(cip68_2);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([refUtxo], Data.void())
+    .attach.SpendingValidator(validator)
+    .pay.ToContract(
+      validatorToAddress(
+        "Preview",
+        validator,
+        getAddressDetails(alice.address).stakeCredential,
+      ),
+      {
+        kind: "inline",
+        value: datum2,
+      },
+      {
+        [refUnit]: 1n,
+        [otherTokenUnit]: 1n,
+      },
+    )
+    .addSigner(alice.address);
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the reference token should have a UTxO to itself",
+  );
+});
+
+Deno.test("Cannot place user token in same utxo as reference token -- on spend", async () => {
+  const refUtxo = await lucid.utxoByUnit(refUnit);
+
+  const metadata2 = Data.fromJson({
+    name: tokenName,
+    description: "Updated description",
+    image: "https://example.com/updated-image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68_2 = new Constr(0, [metadata2, version, extra]);
+  const datum2 = Data.to(cip68_2);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([refUtxo], Data.void())
+    .attach.SpendingValidator(validator)
+    .pay.ToContract(
+      validatorToAddress(
+        "Preview",
+        validator,
+        getAddressDetails(alice.address).stakeCredential,
+      ),
+      {
+        kind: "inline",
+        value: datum2,
+      },
+      {
+        [refUnit]: 1n,
+        [userUnit]: 1n,
+      },
+    )
+    .addSigner(alice.address);
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the reference token should have a UTxO to itself... not even shared with a user token",
+  );
+});
+
+Deno.test("Metadata must be valid", async () => {
+  emulator.awaitBlock(10);
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+  const tokenName = "Menthol";
+
+  { // NFTs (222)
+    const label = 222;
+    const assetName = fromText(tokenName);
+    const refUnit = toUnit(policyId, assetName, 100);
+    const userUnit = toUnit(policyId, assetName, 222);
+
+    const lockAddress = validatorToAddress(
+      "Preview",
+      validator,
+      getAddressDetails(alice.address).stakeCredential,
+    );
+
+    const version = 1n;
+    const extra = new Constr(0, [
+      paymentCredentialOf(alice.address).hash,
+      toLabel(label),
+    ]);
+
+    const tryWithMetadata = (metadata: Data): TxBuilder => {
+      const cip68 = new Constr(0, [metadata, version, extra]);
+      const datum = Data.to(cip68);
+      const tx = lucid
+        .newTx()
+        .collectFrom([utxo])
+        .attach.MintingPolicy(mintingPolicy)
+        .mintAssets(
+          {
+            [refUnit]: 1n,
+            [userUnit]: 1n,
+          },
+          MintAction.Mint,
+        )
+        .pay.ToContract(lockAddress, {
+          kind: "inline",
+          value: datum,
+        }, {
+          [refUnit]: 1n,
+        });
+
+      return tx;
+    };
+
+    // metadata must have a name field
+    await assertRejects(
+      () => {
+        const metadata = Data.fromJson({
+          image: "https://example.com/image.jpg",
+        });
+        return tryWithMetadata(metadata).complete();
+      },
+      "Transaction should fail because there must be a name field in the metadata",
+    );
+
+    await assertRejects(
+      () => {
+        const metadata = Data.fromJson({
+          name: "Menthol",
+          // image: "https://example.com/image.jpg",
+        });
+        return tryWithMetadata(metadata).complete();
+      },
+      "Transaction should fail because there must be a name field in the metadata",
+    );
+
+    // case where the metadata is valid for an NFT
+    const metadata = Data.fromJson({
+      name: tokenName,
+      description: "Test description",
+      image: "https://example.com/image.jpg",
+    });
+    await tryWithMetadata(metadata).complete();
+  }
+
+  { // FTs (333)
+  }
+
+  { // RFTs (444)
+  }
 });
