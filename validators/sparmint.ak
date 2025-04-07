@@ -124,6 +124,12 @@ validator sparmint(oneshot: OutputReference) {
         expect ref_metadata: Cip68 = ref_nft_datum
 
         and {
+          // only ada and the reference NFT are allowed on the ref nft output
+          1 == (ref_nft_output.value
+            |> assets.without_lovelace()
+            |> assets.flatten()
+            |> list.length()),
+
           // the spend script of the ref nft must be the one specified in this validator (meaning it matches the policy id)
           ref_nft_script == policy_id,
           // user token amount must be positive or EXACTLY 1 if the token is an NFT

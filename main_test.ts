@@ -10,9 +10,11 @@ import {
   MintingPolicy,
   mintingPolicyToId,
   paymentCredentialOf,
+  scriptFromNative,
   SpendingValidator,
   toLabel,
   toUnit,
+  unixTimeToSlot,
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
 import blueprint from "./plutus.json" with { type: "json" };
@@ -750,11 +752,6 @@ Deno.test("User token and reference token must be minted together", async () => 
   );
 });
 
-// Deno.test("Try to place a user token along with the reference token", async () => {
-
-
-// })
-
 Deno.test("Reference token must be sent to spend script during mint", async () => {
   const utxo = (await lucid.utxosAt(alice.address))[0];
   const utxoRefParam = new Constr(0, [
@@ -820,10 +817,190 @@ Deno.test("Reference token must be sent to spend script during mint", async () =
       value: datum,
     }, {
       [refUnit]: 1n,
-    })
+    });
 
   await assertRejects(
     () => tx.complete(),
-    "Transaction should fail because the reference token must be sent to the spend script during minting"
+    "Transaction should fail because the reference token must be sent to the spend script during minting",
+  );
+});
+
+Deno.test("Cannot place a user token in same utxo as reference token -- on mint", async () => {
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+
+  const label = 333;
+  const tokenName = "Mentha";
+  const assetName = fromText(tokenName);
+  const refUnit = toUnit(policyId, assetName, 100);
+  const userUnit = toUnit(policyId, assetName, label);
+
+  const lockAddress = validatorToAddress(
+    "Preview",
+    validator,
+    getAddressDetails(alice.address).stakeCredential,
+  );
+
+  const metadata = Data.fromJson({
+    name: tokenName,
+    description: "Test description",
+    image: "https://example.com/image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68 = new Constr(0, [metadata, version, extra]);
+  const datum = Data.to(cip68);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([utxo])
+    .attach.MintingPolicy(mintingPolicy)
+    .mintAssets(
+      {
+        [refUnit]: 1n,
+        [userUnit]: 100n,
+      },
+      MintAction.Mint,
+    )
+    .pay.ToContract(lockAddress, {
+      kind: "inline",
+      value: datum,
+    }, {
+      [refUnit]: 1n,
+      [userUnit]: 3n,
+    });
+
+  // await tx.complete();
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the user token should not be in the same utxo as the reference token",
+  );
+});
+
+Deno.test("Cannot place any other token in same utxo as reference token -- on mint", async () => {
+  // mint some other token using a native script
+
+  const nativeMintingPolicy = scriptFromNative({
+    type: "all",
+    scripts: [
+      { type: "sig", keyHash: paymentCredentialOf(alice.address).hash },
+      {
+        type: "before",
+        slot: unixTimeToSlot(lucid.config().network!, Date.now() + 1000000),
+      },
+    ],
+  });
+
+  const nativePolicyId = mintingPolicyToId(nativeMintingPolicy);
+
+  const otherTokenUnit = nativePolicyId + fromText("MyOtherToken");
+
+  const tx1 = await lucid
+    .newTx()
+    .mintAssets({
+      [otherTokenUnit]: 1n,
+    })
+    .pay.ToAddress(alice.address, { [otherTokenUnit]: 1n })
+    .validTo(Date.now() + 900000)
+    .attach.MintingPolicy(nativeMintingPolicy)
+    .complete();
+
+  const signed = await tx1.sign.withWallet().complete();
+  await signed.submit();
+  emulator.awaitBlock(1);
+
+  const utxo = (await lucid.utxosAt(alice.address))[0];
+  const utxoRefParam = new Constr(0, [
+    utxo.txHash,
+    BigInt(utxo.outputIndex),
+  ]);
+
+  const rawValidator =
+    blueprint.validators.find((v) => v.title === "sparmint.sparmint.spend")!
+      .compiledCode;
+
+  const parameterizedValidator = applyParamsToScript(
+    rawValidator,
+    [utxoRefParam],
+  );
+
+  const validator: SpendingValidator = {
+    type: "PlutusV3",
+    script: parameterizedValidator,
+  };
+
+  const mintingPolicy: MintingPolicy = validator as MintingPolicy;
+  const policyId = mintingPolicyToId(mintingPolicy);
+
+  const label = 333;
+  const tokenName = "Mentha";
+  const assetName = fromText(tokenName);
+  const refUnit = toUnit(policyId, assetName, 100);
+  const userUnit = toUnit(policyId, assetName, label);
+
+  const lockAddress = validatorToAddress(
+    "Preview",
+    validator,
+    getAddressDetails(alice.address).stakeCredential,
+  );
+
+  const metadata = Data.fromJson({
+    name: tokenName,
+    description: "Test description",
+    image: "https://example.com/image.jpg",
+  });
+  const version = 1n;
+  const extra = new Constr(0, [
+    paymentCredentialOf(alice.address).hash,
+    toLabel(label),
+  ]);
+  const cip68 = new Constr(0, [metadata, version, extra]);
+  const datum = Data.to(cip68);
+
+  const tx = lucid
+    .newTx()
+    .collectFrom([utxo])
+    .attach.MintingPolicy(mintingPolicy)
+    .mintAssets(
+      {
+        [refUnit]: 1n,
+        [userUnit]: 100n,
+      },
+      MintAction.Mint,
+    )
+    .pay.ToContract(lockAddress, {
+      kind: "inline",
+      value: datum,
+    }, {
+      [refUnit]: 1n,
+      [otherTokenUnit]: 1n,
+    });
+
+  await assertRejects(
+    () => tx.complete(),
+    "Transaction should fail because the user token should not be in the same utxo as the reference token",
   );
 });
