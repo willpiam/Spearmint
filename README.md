@@ -14,9 +14,14 @@ Unit tests for my contracts.
 
 ## Plans 
 
+### Add third constructor called `BurnEverything` to `MintAction` for burning all tokens including the reference token 
+
+To satisfy this case in the mint validator the transaction must burn the entire supply. Unless we add some counting mechanisum we can only do this if no previous tokens have ever been minted. A counting mechanisum would be very intreasting and would mean the reference token (or some other token to hold the relevant state) would need to be speant with every burn transaction (but not burnt itself) in order to keep track of the current supply. However with out a counter the `BurnEverything` constructor would have use in cases where some none-cip-68 parameter was misconfigured and the minting user needs to start the process again. 
+
 ### A Varient specifically for NFTs
 
 Will require both the user nft and reference NFT be burnt. 
+
 
 ## References
 
